@@ -14,6 +14,8 @@
   let aboutVisible = false;
   let aboutWordleVisible = false;
 
+  let hoverDelayTimer: ReturnType<typeof setTimeout>;
+
   // console.log('[App] appState:', appState)
 
   // ------------------------------------------ language
@@ -31,12 +33,41 @@
 
   const DEFAULT_LANG = "en";
   apiClient.setLang(appState.lang || DEFAULT_LANG);
+
+  let currentSearchQuery = appState.query || "";
+
+  let settingsRebuildTimer: ReturnType<typeof setTimeout>;
+
+  function scheduleGraphRebuild() {
+    const query = currentSearchQuery.trim();
+
+    if (!query) {
+      return;
+    }
+
+    clearTimeout(settingsRebuildTimer);
+    settingsRebuildTimer = setTimeout(async () => {
+      appState.query = query;
+      summaryCache.clear();
+      await performSearchWrap(query);
+      renderer.render(appState.graph);
+    }, 300);
+  }
+
+  function updateNumberSetting(key: "linkLimit" | "maxDepth", event: Event, min: number, max: number) {
+    const input = event.currentTarget as HTMLInputElement;
+    const value = Math.min(max, Math.max(min, Math.floor(Number(input.value) || min)));
+
+    input.value = String(value);
+    appState[key] = value;
+    scheduleGraphRebuild();
+  }
   // ---------------------------------------------------
 
   function wordlePlaceholder(node) {
     // return '...'
     return node.id.replaceAll(/[^\n\s]/g,  '-')
-    
+
   }
 
   function isWordleOn() {
@@ -49,9 +80,9 @@
    **/
   function getText(node) {
     console.log("🚀 | getText | node", node)
-    
+
     const ids = getWordleIdsSet()
-    
+
     if (isWordleOn() && ids.has(node?.data?.pageid?.toString())) {
       return wordlePlaceholder(node)
     }
@@ -61,7 +92,7 @@
 
   function wordleAddNodeHook(node, ui, text) {
     // if (!isWordleOn()) return
-    
+
     const ids = getWordleIdsSet()
 
     if(ids.has(node?.data?.pageid?.toString())) {
@@ -118,14 +149,42 @@
   const ttWidth = 400;
   const ttHeight = 500;
 
+  const summaryCache = new Map<string, any>();
+
+  function getTooltipHTML(data) {
+    const { thumbnail, extract_html, page_url } = data;
+    const imageHTML = thumbnail ? `<img src="${thumbnail.source}" />` : "";
+    const fallbackText = `Can't find a preview. See <a href="${page_url}">the original article</a>`;
+
+    return `${imageHTML}<div class="text">${extract_html || fallbackText}</div>`;
+  }
+
+  async function loadTooltipPreview(node) {
+    if (node.data.extract_html || summaryCache.has(node.id)) {
+      return summaryCache.get(node.id) ?? node.data;
+    }
+
+    const summary = await apiClient.getSummary(node.id);
+    const summaryItem = apiClient.getItem(summary);
+
+    node.data = {
+      ...node.data,
+      ...summaryItem.data,
+    };
+
+    summaryCache.set(node.id, node.data);
+
+    return node.data;
+  }
+
   function scheduleHide() {
-    // console.log("🚀 sheduleHide")
+    clearTimeout(hoverDelayTimer);
+    clearTimeout(showingTimer);
 
-    return setTimeout(() => {
-      // console.log("🚀🚀 hide")
+    isTooltipHidden = true;
+    tooltipHTML = "";
 
-      isTooltipHidden = true;
-    }, 100);
+    return null;
   }
 
   function scheduleShow() {
@@ -141,13 +200,15 @@
   }
 
   function onEnterTooltip() {
-    // console.log("🚀 ~ onEnterTooltip")
-    clearTimeout(hidingTimer);
+    // Keep tooltip stable only after it is already visible.
+    if (!isTooltipHidden) {
+      clearTimeout(hidingTimer);
+    }
   }
 
   function onLeaveTooltip() {
     // console.log("🚀 ~ onLeaveTooltip")
-    hidingTimer = scheduleHide();
+    scheduleHide();
   }
 
   function showTooltipNode(e) {
@@ -155,19 +216,16 @@
     // console.log("🚀 ~ showTooltipNode ~ e", visualViewport)
 
     if (isWordleOn() && appState.wordle.toString().includes(e.node?.data?.pageid?.toString())) {
-      return  
+      return
     }
 
     clearTimeout(hidingTimer);
+    clearTimeout(showingTimer);
+    clearTimeout(hoverDelayTimer);
 
     if (!e.node) {
-      hidingTimer = scheduleHide();
-      clearTimeout(showingTimer);
+      scheduleHide();
       showingTimer = null;
-      return;
-    }
-
-    if (showingTimer) {
       return;
     }
 
@@ -187,18 +245,26 @@
 
     // TODO: should sanitize?
     // https://developer.mozilla.org/en-US/docs/Web/API/HTML_Sanitizer_API
-    const { thumbnail, extract_html, page_url } = e.node.data;
-    tooltipHTML = thumbnail ? `<img src="${thumbnail.source}" />` : "";
+    loadTooltipPreview(e.node)
+      .then((data) => {
+        e.node.__loadedData = data;
+      })
+      .catch((error) => {
+        console.warn(`Can't load preview for ${e.node.id}`, error);
+      });
 
-    const fallbackText = `Can't find a preview. See <a href="${page_url}">the original article</a>`;
-    tooltipHTML += `<div class="text">${extract_html || fallbackText}</div>`;
+    hoverDelayTimer = setTimeout(() => {
+      const data = e.node.__loadedData || e.node.data;
+      tooltipHTML = getTooltipHTML(data);
+      isTooltipHidden = false;
+    }, 1000);
 
     // reuse current tooltip
     // if (!isTooltipHidden) {
     //   return
     // }
 
-    showingTimer = scheduleShow();
+    // showingTimer = scheduleShow();
 
     let left: number;
     requestAnimationFrame(() => {
@@ -275,7 +341,7 @@
     else {
       console.log("🚀 | onNodeClick | e.node.data", e.node.data)
       const isIdSelected = toggleWordleId(e.node.data.pageid)
-      
+
       if (isIdSelected) {
         e.text.text(wordlePlaceholder(e.node))
         wordleNodes.set(e.node.data.pageid, e)
@@ -302,6 +368,7 @@
   // --------------------------------------- functions
   async function onSearch(e: CustomEvent) {
     const q = e.detail;
+    currentSearchQuery = q;
     // console.log('[onSearch] query:', q);
 
     await performSearchWrap(q);
@@ -319,7 +386,36 @@
 
 <!-- <main class="app-container"> -->
 {#if !appState.wordle.toString().includes('true')}
-  <WikiSearch on:search={onSearch} />
+  <div class="search-panel">
+    <WikiSearch
+      on:search={onSearch}
+      on:query-change={(event) => (currentSearchQuery = event.detail)}
+    />
+
+    <div class="layout-container graph-settings">
+      <label>
+        <span>Links limit</span>
+        <input
+          type="number"
+          min="1"
+          max="50"
+          value={appState.linkLimit || 50}
+          on:change={(event) => updateNumberSetting("linkLimit", event, 1, 50)}
+        />
+      </label>
+
+      <label>
+        <span>Depth</span>
+        <input
+          type="number"
+          min="1"
+          max="10"
+          value={appState.maxDepth || 2}
+          on:change={(event) => updateNumberSetting("maxDepth", event, 1, 10)}
+        />
+      </label>
+    </div>
+  </div>
 
   {:else}
   <div style="display: flex; width: fit-content; opacity: 0.7; font-weight: 500; padding: 0.7em 1em;">
@@ -328,7 +424,7 @@
 {/if}
 
 {#if showConfettiContainer}
-<div 
+<div
 
   style="
   opacity: {showConfetti ? 1 : 0};
@@ -367,7 +463,7 @@
   <a href="#" on:click={toggleWordleMode}>{'wordle ' + (appState.wordle.toString().includes('true') ? 'on' : 'off')}</a>
   <a href="#" on:click={() => (aboutVisible = true)}>about</a>
   <a
-    href="https://github.com/blinpete/wiki-graph"
+    href="https://github.com/vladivut/wiki-graph"
     target="_blank"
     rel="noopener noreferrer">code</a
   >
@@ -405,5 +501,55 @@
     position: fixed;
     bottom: 0px;
     /* left: 0; */
+  }
+
+  .search-panel {
+    --search-width: 360px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    width: fit-content;
+  }
+
+  .graph-settings {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    width: var(--search-width);
+    box-sizing: border-box;
+    margin-top: -0.4rem;
+  }
+
+  .graph-settings label {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 3rem;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+
+    padding: 0.35rem 0.45rem;
+    border: 2px solid var(--borderColor);
+    background-color: #fff;
+    color: var(--textColor);
+    font-size: 0.95rem;
+  }
+
+  .graph-settings label:focus-within {
+    border-color: var(--c-accent);
+    box-shadow: inset 0 0 0 1px var(--c-accent);
+  }
+
+  .graph-settings span {
+    white-space: nowrap;
+  }
+
+  .graph-settings input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 0.15rem 0.2rem;
+    border: 1px solid var(--borderColor);
+    color: inherit;
+    font-size: 0.9rem;
   }
 </style>

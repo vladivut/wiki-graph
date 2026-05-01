@@ -28,6 +28,7 @@
     console.log("keyup:", e);
 
     const q = query.trim();
+    dispatch('query-change', q);
 
     if (!q) {
       console.log("[onKeyup] empty query given!");
@@ -82,6 +83,7 @@
 
   function onSelect(e: CustomEvent<number>) {
     query = suggestions[e.detail]?.title;
+    dispatch('query-change', query); // ← добавить
     search(query);
     dropSuggest()
   }
@@ -144,12 +146,13 @@
   .input-box {
     position: relative;
 
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: var(--search-width, 360px) max-content;
+    align-items: center;
+    gap: 1rem;
     width: fit-content;
 
     color: var(--textColor);
-
   }
 
   .input-wrapper {
@@ -174,7 +177,9 @@
 
   input {
     font-size: 1.2rem;
-    min-width: 280px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     padding: 0.5em;
 
     margin: 2px;
@@ -186,12 +191,13 @@
 
 
   .progress-info {
-    position: absolute;
-    top: 100%;
+    position: static;
 
-    font-size: small;
+    font-size: 0.95rem;
     padding: 0.2em 0.4em;
 
     width: max-content;
+    max-width: 260px;
+    line-height: 1.3;
   }
 </style>

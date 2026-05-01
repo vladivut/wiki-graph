@@ -14,6 +14,7 @@
     inspiredBy: string
     checkOut: string
     enjoy: string
+    updatedBy: string
 
     node: { name: string; role: string}
     edge: { name: string; role: string}
@@ -24,11 +25,12 @@
   const text: Record<Langs, Description> = {
     en: {
       descShort: "a graph client for Wikipedia",
-      desc: "Wiki Graph gets your query and takes two steps further to show you the bigger picture of what you're searching for. This way you can see related topics as well as connections between them.",
-      descTechnical: "It starts with a wiki article you give, collects top 20 related articles, then for each one collects their top 20 and finally draws a graph of everything that's found.",
+      desc: "Wiki Graph gets your query and takes Depth steps further to show you the bigger picture of what you're searching for. This way you can see related topics as well as connections between them.",
+      descTechnical: "It starts with a wiki article you give, collects top Links limit related articles, then for each one collects their top Links limit and finally draws a graph of everything that's found.",
       inspiredBy: "This was heavily inspired by",
       checkOut: " so check out his project",
       enjoy: "Enjoy diving into knowledge",
+      updatedBy: "Maintained and improved by:",
 
       node: {name: 'Node', role: 'represents a wiki article'},
       edge: {name: 'Edge', role: 'represents a relation between two articles'},
@@ -37,15 +39,16 @@
     },
     ru: {
       descShort: "граф клиент для Википедии",
-      desc: "Wiki Graph принимает запрос и проходит на два шага вперед, чтобы показать более полную картину поиска. Так можно увидеть смежные темы и связи между ними.",
-      descTechnical: "Начиная с выбранной вики статьи, алгоритм собирает топ 20 смежных статей, потом для каждой из них собирает ее топ 20 и наконец рисует граф из всего, что найдено.",
+      desc: "Wiki Graph принимает запрос и проходит на Depth шагов вперед, чтобы показать более полную картину поиска. Так можно увидеть смежные темы и связи между ними.",
+      descTechnical: "Начиная с выбранной вики статьи, алгоритм собирает топ Links limit смежных статей, потом для каждой из них собирает ее топ Links limit и наконец рисует граф из всего, что найдено.",
       inspiredBy: "Работа вдохновлена проектом",
       checkOut: " и основана на его движке",
       enjoy: "Ну все, развлекайтесь и ботайте",
+      updatedBy: "Актуализация и доработка:",
 
-      node: {name: 'Узел', role: 'это вики-статья'},
+      node: {name: 'Узел', role: '– это вики-статья'},
       edge: {name: 'Ребро', role: 'показывает связь между двумя статьями'},
-      nodeClick: {name: 'Клик по узелу', role: 'открывает статью в новой вкладке'},
+      nodeClick: {name: 'Клик по узлу', role: 'открывает статью в новой вкладке'},
       nodeHover: {name: 'Наведение на узел', role: 'показывает превьюшку статьи'},
     },
   }
@@ -80,6 +83,13 @@
           {text[currentLang].enjoy},<br>
           <code>
             <a href="https://github.com/blinpete" target="_blank" rel="noopener noreferrer">blinpete</a>
+          </code>
+        </p>
+
+        <p class="p-last footnote">
+          {text[currentLang].updatedBy}<br>
+          <code>
+            <a href="https://github.com/vladivut" target="_blank" rel="noopener noreferrer">vladivut</a>
           </code>
         </p>
 

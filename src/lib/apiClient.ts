@@ -1,26 +1,26 @@
-import wiki, { relatedResult, wikiSummary } from "wikipedia";
-import { appState } from "./state";
+import wiki, {wikiSummary} from "wikipedia";
+import {appState} from "./state";
 // TODO: get rid of `wikipedia` pkg
 
 
 // https://dev.to/timhuang/a-simple-way-to-detect-if-browser-is-on-a-mobile-device-with-javascript-44j3
 export let isMobile = false;
 if (
-  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  )
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+    )
 ) {
-  isMobile = true;
+    isMobile = true;
 }
 
 function __minimizeUrl(url: string) {
-  return url.replaceAll(/\n\s*/g, "");
+    return url.replaceAll(/\n\s*/g, "");
 }
 
 let restApiLang = 'en'
 
 function RestApiBase() {
-  return `https://${restApiLang}.wikipedia.org/api/rest_v1`
+    return `https://${restApiLang}.wikipedia.org/api/rest_v1`
 }
 
 // ------------------------------------------------------------ //
@@ -42,7 +42,7 @@ function RestApiBase() {
 // }
 
 const getUrlSuggest = (query) =>
-  __minimizeUrl(`
+    __minimizeUrl(`
   https://${appState.lang}.wikipedia.org/w/api.php
   ?action=opensearch
   &format=json
@@ -58,32 +58,50 @@ const getUrlSuggest = (query) =>
  * https://www.mediawiki.org/wiki/API:Main_page
  * */
 async function suggestCustom(query: string) {
-  const apiEndpoint = getUrlSuggest(query);
-  console.log("api endpoint:", apiEndpoint);
-  console.log("encoded url:", encodeURI(query));
+    const apiEndpoint = getUrlSuggest(query);
+    console.log("api endpoint:", apiEndpoint);
+    console.log("encoded url:", encodeURI(query));
 
-  const fetchSearch = (await (await fetch(apiEndpoint)).json()) as [
-    string,
-    string[],
-    string[],
-    string[]
-  ];
-  console.log("fetchSearch:", fetchSearch);
+    const fetchSearch = (await (await fetch(apiEndpoint)).json()) as [
+        string,
+        string[],
+        string[],
+        string[]
+    ];
+    console.log("fetchSearch:", fetchSearch);
 
-  // return fetchSearch [query, suggests[], ""[], links[]]
-  const [, titles, , links] = fetchSearch;
-  
-  
-  const res: SuggestionsCustom = [];
-  for (let i = 0; i < titles.length; i++) {
-    const chunks = links[i].split("/")
-    res.push({ title: titles[i], normalized: chunks[chunks.length - 1] });
-  }
+    // return fetchSearch [query, suggests[], ""[], links[]]
+    const [, titles, , links] = fetchSearch;
 
-  return res;
+
+    const res: SuggestionsCustom = [];
+    for (let i = 0; i < titles.length; i++) {
+        const chunks = links[i].split("/")
+        res.push({title: titles[i], normalized: chunks[chunks.length - 1]});
+    }
+
+    return res;
 }
 
 export type SuggestionsCustom = { title: string; normalized: string }[];
+
+type ActionApiLink = {
+    ns: number;
+    title: string;
+};
+
+type GraphPageItem = ActionApiLink | wikiSummary;
+
+type ActionApiLinksResponse = {
+    query?: {
+        pages?: Array<{
+            pageid?: number;
+            ns?: number;
+            title?: string;
+            links?: ActionApiLink[];
+        }>;
+    };
+};
 
 // ------------------------------------------------------------ //
 //                       Links & Preview                       //
@@ -91,78 +109,94 @@ export type SuggestionsCustom = { title: string; normalized: string }[];
 
 /** Loads page links and intro. */
 async function page(query: string) {
-  const resPage = await wiki.page(query, {
-    autoSuggest: true,
-    redirect: false,
-  });
+    const resPage = await wiki.page(query, {
+        autoSuggest: true,
+        redirect: false,
+    });
 
-  // REST API spec
-  // https://en.wikipedia.org/api/rest_v1/#/
+    // REST API spec
+    // https://en.wikipedia.org/api/rest_v1/#/
 
-  // console.log("resPage:", resPage);
+    // console.log("resPage:", resPage);
 
-  // console.log("resPage.links:", await resPage.links());
-  // console.log("resPage.intro:", await resPage.intro());
+    // console.log("resPage.links:", await resPage.links());
+    // console.log("resPage.intro:", await resPage.intro());
 
-  // consider showing the infobox
-  // console.log("resPage.infobox:", await resPage.infobox({autoSuggest: true}));
+    // consider showing the infobox
+    // console.log("resPage.infobox:", await resPage.infobox({autoSuggest: true}));
 
-  // requires User-Agent/Api-User-Agent header
-  // console.log("resPage.summary:", await resPage.summary());
+    // requires User-Agent/Api-User-Agent header
+    // console.log("resPage.summary:", await resPage.summary());
 
-  // don't need the whole content (for a preview)
-  // console.log("resPage.content:", await resPage.content());
+    // don't need the whole content (for a preview)
+    // console.log("resPage.content:", await resPage.content());
 
-  // the "/related" route is experimental!
-  // const related = await resPage.related();
-  // console.log("resPage.related:", related);
+    // the "/related" route is experimental!
+    // const related = await resPage.related();
+    // console.log("resPage.related:", related);
 
-  return resPage;
+    return resPage;
 }
 
 async function getSummary(query: string) {
-  // console.log("🚀 | getSummary | query", query)
+    const endpoint = RestApiBase() + "/page/summary/" + encodeURIComponent(query);
+    const response = await fetch(endpoint);
 
-  const endpoint = RestApiBase() + '/page/summary/' + query
-  const summary: wikiSummary = await (await fetch(endpoint)).json();
+    if (!response.ok) {
+        throw new Error(`Wikipedia summary API error: ${response.status}`);
+    }
 
-  return summary;
+    const summary: wikiSummary = await response.json();
+
+    return summary;
 }
 
-async function getResponse(query: string) {
-  const endpoint = RestApiBase() + '/page/related/' + query
-  const related: relatedResult = await (await fetch(endpoint)).json();
+async function getResponse(query: string, limit = 50) {
+    const safeLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 50)));
+    const endpoint = __minimizeUrl(`
+    https://${appState.lang}.wikipedia.org/w/api.php
+    ?action=query
+    &format=json
+    &formatversion=2
+    &origin=*
+    &prop=links
+    &titles=${encodeURIComponent(query)}
+    &plnamespace=0
+    &pllimit=${safeLimit}`);
 
-  return related.pages;
+    const response = await fetch(endpoint);
+
+    if (!response.ok) {
+        throw new Error(`Wikipedia Action API error: ${response.status}`);
+    }
+
+    const data: ActionApiLinksResponse = await response.json();
+    const page = data.query?.pages?.[0];
+
+    return page?.links ?? [];
 }
 
-function getItem(item: relatedResult["pages"][number]) {
-  // TODO: replace with titles.display?
-  // return item.titles.normalized;
+function getItem(item: GraphPageItem) {
+    const title = item.title;
+    const page_url =
+        "content_urls" in item
+            ? isMobile
+                ? item.content_urls.mobile.page
+                : item.content_urls.desktop.page
+            : `https://${appState.lang}.wikipedia.org/wiki/${encodeURIComponent(
+                title.replaceAll(" ", "_")
+            )}`;
 
-  const {
-    description,
-    pageid,
-    extract_html,
-    originalimage,
-    thumbnail,
-    content_urls,
-  } = item;
+    const data = {
+        description: "description" in item ? item.description : "",
+        pageid: "pageid" in item ? item.pageid : undefined,
+        extract_html: "extract_html" in item ? item.extract_html : "",
+        originalimage: "originalimage" in item ? item.originalimage : undefined,
+        thumbnail: "thumbnail" in item ? item.thumbnail : undefined,
+        page_url,
+    };
 
-  const page_url = isMobile
-    ? content_urls.mobile.page
-    : content_urls.desktop.page;
-
-  const data = {
-    description,
-    pageid,
-    extract_html,
-    originalimage,
-    thumbnail,
-    page_url,
-  };
-
-  return { id: item.titles.normalized, data };
+    return {id: title, data};
 }
 
 // ------------------------------------------------------------ //
@@ -195,22 +229,22 @@ function getItem(item: relatedResult["pages"][number]) {
 // }
 
 function setLang(language: string) {
-  // validation?
+    // validation?
 
-  restApiLang = language;
+    restApiLang = language;
 }
 
 export const apiClient = {
-  // suggest,
-  // page,
+    // suggest,
+    // page,
 
-  suggestCustom,
-  getSummary,
+    suggestCustom,
+    getSummary,
 
-  getResponse,
-  getItem,
+    getResponse,
+    getItem,
 
-  // languages,
-  // loadLangs,
-  setLang,
+    // languages,
+    // loadLangs,
+    setLang,
 };
